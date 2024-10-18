@@ -1,0 +1,10 @@
+# ONLY XDL_KERNELS
+set(BATCHED_GEMM_MULTIPLY_MULTIPLY_INSTANCES)
+
+list(APPEND BATCHED_GEMM_MULTIPLY_MULTIPLY_INSTANCES
+        device_batched_gemm_multiply_multiply_xdl_f8_f8_bf16/device_batched_gemm_multiply_multiply_xdl_f8_f8_bf16_mk_nk_mn_comp_default_instance.cpp
+)
+
+set_source_files_properties(device_batched_gemm_multiply_multiply_xdl_f8_f8_bf16/device_batched_gemm_multiply_multiply_xdl_f8_f8_bf16_mk_nk_mn_comp_default_instance.cpp PROPERTIES COMPILE_OPTIONS ";-mllvm;-greedy-reverse-local-assignment=1")
+
+add_instance_library(device_batched_gemm_multiply_multiply_instance ${BATCHED_GEMM_MULTIPLY_MULTIPLY_INSTANCES})
