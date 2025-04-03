@@ -41,16 +41,6 @@ make_kernel(KernelImpl /*f*/, dim3 grid_dim, dim3 block_dim, std::size_t lds_byt
     };
 }
 
-template <typename... Callables>
-CK_TILE_HOST void launch_and_check(const stream_config& sc, Callables&&... callables)
-{
-    // abort the sequence in case of intermediate error
-    if(!((static_cast<void>(callables(sc)), hipPeekAtLastError() == hipSuccess) && ...))
-    {
-        HIP_CHECK_ERROR(hipGetLastError());
-    }
-}
-
 // clang-format off
 /*
  * launch_kernel()
@@ -79,39 +69,38 @@ CK_TILE_HOST void launch_and_check(const stream_config& sc, Callables&&... calla
  **/
 // clang-format on
 template <typename... Callables>
-CK_TILE_HOST float launch_kernel(const stream_config& s, Callables&&... callables)
+CK_TILE_HOST float launch_kernel(const stream_config& s, Callables... callables)
 {
-    if(!s.time_kernel_)
-    {
-        launch_and_check(s, std::forward<Callables>(callables)...);
+    // clang-format off
+    if(!s.time_kernel_) {
+        (callables(s),...); HIP_CHECK_ERROR(hipGetLastError());
         return 0;
     }
+    if(s.is_gpu_timer_) {
+        gpu_timer timer {};
 
-    auto time_launches = [&](auto timer) {
         // warmup
-        for(int i = 0; i < s.cold_niters_; i++)
-        {
-            launch_and_check(s, std::forward<Callables>(callables)...);
-        }
+        for(int i = 0; i < s.cold_niters_; i++) { (callables(s),...); } HIP_CHECK_ERROR(hipGetLastError());
 
         timer.start(s.stream_id_);
-        for(int i = 0; i < s.nrepeat_; i++)
-        {
-            launch_and_check(s, std::forward<Callables>(callables)...);
-        }
+        for(int i = 0; i < s.nrepeat_; i++) { (callables(s),...); } HIP_CHECK_ERROR(hipGetLastError());
         timer.stop(s.stream_id_);
 
         return timer.duration() / s.nrepeat_;
-    };
+    }
+    else {
+        cpu_timer timer {};
 
-    if(s.is_gpu_timer_)
-    {
-        return time_launches(gpu_timer{});
+        // warmup
+        for(int i = 0; i < s.cold_niters_; i++) { (callables(s),...); } HIP_CHECK_ERROR(hipGetLastError());
+
+        timer.start(s.stream_id_);
+        for(int i = 0; i < s.nrepeat_; i++) { (callables(s),...); } HIP_CHECK_ERROR(hipGetLastError());
+        timer.stop(s.stream_id_);
+
+        return timer.duration() / s.nrepeat_;
     }
-    else
-    {
-        return time_launches(cpu_timer{});
-    }
+    // clang-format on
 }
 
 } // namespace ck_tile

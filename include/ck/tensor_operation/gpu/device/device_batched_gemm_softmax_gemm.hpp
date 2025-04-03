@@ -2,10 +2,9 @@
 // Copyright (c) 2018-2023, Advanced Micro Devices, Inc. All rights reserved.
 
 #pragma once
-#ifndef __HIPCC_RTC__
+
 #include <iostream>
 #include <vector>
-#endif
 
 #include "device_base.hpp"
 
@@ -29,7 +28,6 @@ template <typename ALayout,
           bool MaskOutUpperTriangle> // TODO: enum for mask type
 struct DeviceBatchedGemmSoftmaxGemm : public BaseOperator
 {
-#ifndef __HIPCC_RTC__
     virtual std::unique_ptr<BaseArgument>
     MakeArgumentPointer(const void* p_a,
                         const void* p_b0,
@@ -55,7 +53,6 @@ struct DeviceBatchedGemmSoftmaxGemm : public BaseOperator
                         CElementwiseOperation c_element_op) = 0;
 
     virtual std::unique_ptr<BaseInvoker> MakeInvokerPointer() = 0;
-#endif
 };
 
 } // namespace device

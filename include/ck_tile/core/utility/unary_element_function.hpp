@@ -51,18 +51,16 @@ struct composes<F>
 template <typename... Ts>
 __host__ __device__ composes(Ts&&...)->composes<remove_cvref_t<Ts>...>;
 
-template <typename SaturateType>
+template <typename To>
 struct saturates
 {
-    // NOTE: this function does not return SaturateType value
-    // it is user's responsiblity to do further cast or not
-    template <typename AccType>
-    CK_TILE_HOST_DEVICE constexpr auto operator()(const AccType& a_) const
-        -> std::enable_if_t<std::is_arithmetic_v<AccType>, AccType>
+    template <typename From>
+    CK_TILE_HOST_DEVICE constexpr auto operator()(const From& from) const
+        -> std::enable_if_t<std::is_arithmetic_v<From>, From>
     {
-        return clamp(a_,
-                     type_convert<AccType>(numeric<SaturateType>::lowest()),
-                     type_convert<AccType>(numeric<SaturateType>::max()));
+        return clamp(from,
+                     type_convert<From>(numeric<To>::lowest()),
+                     type_convert<From>(numeric<To>::max()));
     }
 };
 

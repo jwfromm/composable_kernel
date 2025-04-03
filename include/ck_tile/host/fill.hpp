@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2018-2025, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2018-2023, Advanced Micro Devices, Inc. All rights reserved.
 
 #pragma once
 
@@ -282,14 +282,7 @@ struct FillMonotonicSeq
     {
         std::generate(first, last, [=, n = init_value_]() mutable {
             auto tmp = n;
-            if constexpr(std::is_same_v<decltype(tmp), pk_int4_t>)
-            {
-                n.data += step_.data;
-            }
-            else
-            {
-                n += step_;
-            }
+            n += step_;
             return tmp;
         });
     }

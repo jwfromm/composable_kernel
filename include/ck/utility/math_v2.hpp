@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2018-2025, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2018-2024, Advanced Micro Devices, Inc. All rights reserved.
 
 #pragma once
 
@@ -19,7 +19,7 @@ extern "C" __device__ float __ocml_native_recip_f32(float);
 #endif
 
 // math functions for the host,  some are implemented by calling C++ std functions
-#if !defined(__HIPCC_RTC__) || !defined(CK_CODE_GEN_RTC)
+
 static inline __host__ float abs(float x) { return std::abs(x); };
 
 static inline __host__ double abs(double x) { return std::abs(x); };
@@ -459,7 +459,7 @@ inline __host__ double expm1<double>(double x)
 {
     return std::expm1(x);
 }
-#endif
+
 // math functions for the HIP kernel,  some are implemented by calling hip builtin functions
 
 static inline __device__ float abs(float x) { return ::abs(x); };
@@ -608,11 +608,11 @@ inline __device__ int8_t neg<int8_t>(int8_t x)
     return -x;
 };
 
-template <>
-inline __device__ half_t neg<half_t>(half_t x)
-{
-    return __hneg(static_cast<__half>(x));
-};
+// template <>
+// inline __device__ half_t neg<half_t>(half_t x)
+// {
+//     return __hneg(x);
+// };
 
 template <typename T>
 inline __device__ T atan(T x)
@@ -650,11 +650,11 @@ inline __device__ double sin<double>(double x)
     return ::sin(x);
 };
 
-template <>
-inline __device__ half_t sin<half_t>(half_t x)
-{
-    return hsin(static_cast<__half>(x));
-};
+// template <>
+// inline __device__ half_t sin<half_t>(half_t x)
+// {
+//     return ::hsin(x);
+// };
 
 template <typename T>
 inline __device__ T asin(T x)
@@ -782,11 +782,11 @@ inline __device__ double ceil<double>(double x)
     return ::ceil(x);
 };
 
-template <>
-inline __device__ half_t ceil<half_t>(half_t x)
-{
-    return hceil(static_cast<__half>(x));
-};
+// template <>
+// inline __device__ half_t ceil<half_t>(half_t x)
+// {
+//     return ::hceil(x);
+// };
 
 template <typename T>
 inline __device__ T cosh(T x)
@@ -824,11 +824,11 @@ inline __device__ double floor<double>(double x)
     return ::floor(x);
 };
 
-template <>
-inline __device__ half_t floor<half_t>(half_t x)
-{
-    return hfloor(static_cast<__half>(x));
-};
+// template <>
+// inline __device__ half_t floor<half_t>(half_t x)
+// {
+//     return ::hfloor(x);
+// };
 
 template <typename T>
 inline __device__ T rcp(T x)
@@ -846,11 +846,11 @@ inline __device__ T exp(T x)
     return ck::type_convert<T>(__ocml_exp_f32(ck::type_convert<float>(x)));
 };
 
-template <>
-inline __device__ half_t exp<half_t>(half_t x)
-{
-    return hexp(static_cast<__half>(x));
-};
+// template <>
+// inline __device__ half_t exp<half_t>(half_t x)
+// {
+//     return hexp(x);
+// };
 
 template <>
 inline __device__ float exp<float>(float x)
@@ -870,11 +870,11 @@ inline __device__ T log(T x)
     return ck::type_convert<T>(__logf(ck::type_convert<float>(x)));
 };
 
-template <>
-inline __device__ half_t log<half_t>(half_t x)
-{
-    return hlog(static_cast<__half>(x));
-};
+// template <>
+// inline __device__ half_t log<half_t>(half_t x)
+// {
+//     return hlog(x);
+// };
 
 template <>
 inline __device__ float log<float>(float x)
@@ -922,24 +922,6 @@ template <>
 inline __device__ double expm1<double>(double x)
 {
     return expm1(x);
-};
-
-template <typename T>
-inline __device__ T cos(T x)
-{
-    return ck::type_convert<T>(cosf(ck::type_convert<float>(x)));
-};
-
-template <>
-inline __device__ float cos<float>(float x)
-{
-    return cosf(x);
-};
-
-template <>
-inline __device__ double cos<double>(double x)
-{
-    return cos(x);
 };
 
 } // namespace math

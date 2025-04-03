@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2018-2025, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2018-2024, Advanced Micro Devices, Inc. All rights reserved.
 
 #ifndef UTILITY_DEBUG_HPP
 #define UTILITY_DEBUG_HPP
-#include "type.hpp"
 
 namespace ck {
 namespace debug {

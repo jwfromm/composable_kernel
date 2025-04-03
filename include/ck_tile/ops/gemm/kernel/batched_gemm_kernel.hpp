@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2024-2025, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2024, Advanced Micro Devices, Inc. All rights reserved.
 
 #pragma once
 
 #include "ck_tile/ops/gemm/kernel/gemm_kernel.hpp"
-#include "ck_tile/ops/common.hpp"
-#include "ck_tile/host/concat.hpp"
 
 namespace ck_tile {
 
@@ -46,7 +44,7 @@ struct BatchedGemmKernel : public GemmKernel<TilePartitioner_, GemmPipeline_, Ep
 {
     using Base = GemmKernel<TilePartitioner_, GemmPipeline_, EpiloguePipeline_>;
 
-    using GemmKernelArgs = typename ck_tile::GemmKernelArgs;
+    using GemmKernelArgs = typename Base::GemmKernelArgs;
 
     using ADataType = typename Base::ADataType;
     using BDataType = typename Base::BDataType;
@@ -58,18 +56,6 @@ struct BatchedGemmKernel : public GemmKernel<TilePartitioner_, GemmPipeline_, Ep
     using ALayout          = typename Base::ALayout;
     using BLayout          = typename Base::BLayout;
     using CLayout          = typename Base::CLayout;
-
-    [[nodiscard]] CK_TILE_HOST static const std::string GetName()
-    {
-        // clang-format off
-        using P_ = GemmPipeline;
-
-        return concat('_', "gemm_batched", gemm_prec_str<ADataType, BDataType>,
-                      concat('x', P_::MPerBlock, P_::NPerBlock, P_::KPerBlock), 
-                      concat('x', P_::GetVectorSizeA(), P_::GetVectorSizeB(), P_::GetVectorSizeC()),
-                      concat('x', P_::kPadM, P_::kPadN, P_::kPadK));
-        // clang-format on
-    }
 
     struct BatchedGemmKernelArgs : GemmKernelArgs
     {
@@ -84,7 +70,7 @@ struct BatchedGemmKernel : public GemmKernel<TilePartitioner_, GemmPipeline_, Ep
     __host__ static constexpr auto
     GridSize(index_t M, index_t N, index_t KBatch, index_t batch_count)
     {
-        return dim3(TilePartitioner::GridSize(M, N), batch_count, KBatch);
+        return TilePartitioner::GridSize(M, N, KBatch * batch_count);
     }
 
     __host__ static constexpr auto BlockSize() { return dim3(Base::KernelBlockSize); }
@@ -115,14 +101,11 @@ struct BatchedGemmKernel : public GemmKernel<TilePartitioner_, GemmPipeline_, Ep
 
     CK_TILE_DEVICE void operator()(BatchedGemmKernelArgs kargs) const
     {
-        const auto [iM, iN] = TilePartitioner{kargs.M, kargs.N}.GetOutputTileIndex(blockIdx.x);
-        const index_t i_m   = __builtin_amdgcn_readfirstlane(iM * TilePartitioner::MPerBlock);
-        const index_t i_n   = __builtin_amdgcn_readfirstlane(iN * TilePartitioner::NPerBlock);
+        const auto [i_m, i_n] = TilePartitioner{}();
+        const auto i_batch    = __builtin_amdgcn_readfirstlane(blockIdx.z / kargs.KBatch);
+        const auto i_k        = __builtin_amdgcn_readfirstlane(blockIdx.z - i_batch * kargs.KBatch);
 
-        const auto i_batch  = __builtin_amdgcn_readfirstlane(blockIdx.y);
-        const auto i_splitk = __builtin_amdgcn_readfirstlane(blockIdx.z);
-
-        const typename Base::SplitKBatchOffset splitk_batch_offset(kargs, i_splitk);
+        const typename Base::SplitKBatchOffset splitk_batch_offset(kargs, i_k);
 
         //  options
         const auto batch_stride_A = __builtin_amdgcn_readfirstlane(kargs.batch_stride_A);
@@ -142,7 +125,7 @@ struct BatchedGemmKernel : public GemmKernel<TilePartitioner_, GemmPipeline_, Ep
         // allocate LDS
         __shared__ char smem_ptr[GetSmemSize()];
 
-        if(kargs.k_batch == 1)
+        if(kargs.KBatch == 1)
         {
             this->RunGemm(a_ptr, b_ptr, c_ptr, smem_ptr, kargs, splitk_batch_offset, i_m, i_n);
         }

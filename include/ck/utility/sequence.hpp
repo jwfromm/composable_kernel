@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2018-2025, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2018-2024, Advanced Micro Devices, Inc. All rights reserved.
 
 #pragma once
 
-#if !defined(__HIPCC_RTC__) || !defined(CK_CODE_GEN_RTC)
 #include <ostream>
-#endif
 
 #include "ck/utility/integral_constant.hpp"
 #include "ck/utility/type.hpp"
@@ -254,18 +252,6 @@ struct arithmetic_sequence_gen
         (Increment > 0 && IBegin < IEnd) || (Increment < 0 && IBegin > IEnd);
 
     using type = typename conditional<kHasContent, type0, type1>::type;
-};
-
-template <index_t IEnd>
-struct arithmetic_sequence_gen<0, IEnd, 1>
-{
-    template <typename T, T... Ints>
-    struct WrapSequence
-    {
-        using type = Sequence<Ints...>;
-    };
-    // https://reviews.llvm.org/D13786
-    using type = typename __make_integer_seq<WrapSequence, index_t, IEnd>::type;
 };
 
 // uniform sequence
@@ -914,7 +900,6 @@ using uniform_sequence_gen_t = typename uniform_sequence_gen<NSize, I>::type;
 
 } // namespace ck
 
-#if !defined(__HIPCC_RTC__) || !defined(CK_CODE_GEN_RTC)
 template <ck::index_t... Is>
 std::ostream& operator<<(std::ostream& os, const ck::Sequence<Is...>)
 {
@@ -925,4 +910,3 @@ std::ostream& operator<<(std::ostream& os, const ck::Sequence<Is...>)
     os << S::At(S::Size() - ck::Number<1>{}).value << "}";
     return os;
 }
-#endif

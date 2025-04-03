@@ -1,6 +1,6 @@
 
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2018-2025, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2018-2024, Advanced Micro Devices, Inc. All rights reserved.
 
 #include <ck_tile/core.hpp>
 #include "moe_smoothquant.hpp"
@@ -11,8 +11,7 @@
 using S = ck_tile::stream_config;
 using A = moe_smoothquant_args;
 
-template <typename InputType_,
-          typename OutputType_,
+template <typename DataType_,
           ck_tile::index_t Repeat_M_,         // each thread repeat along M
           ck_tile::index_t Repeat_N_,         // each thread repeat along N
           ck_tile::index_t ThreadPerBlock_M_, // num threads along M
@@ -20,8 +19,7 @@ template <typename InputType_,
           ck_tile::index_t Vector_N_,         // vector size along N
           bool kPadN_,
           bool kTwoPass_>
-using trait_ = moe_smoothquant_traits_<InputType_,
-                                       OutputType_,
+using trait_ = moe_smoothquant_traits_<DataType_,
                                        Repeat_M_,
                                        Repeat_N_,
                                        ThreadPerBlock_M_,
@@ -33,15 +31,14 @@ using trait_ = moe_smoothquant_traits_<InputType_,
 template <typename Traits_>
 float moe_smoothquant_(const S& s, A a)
 {
-    using InputType  = typename Traits_::InputType;
-    using OutputType = typename Traits_::OutputType;
+    using DataType = typename Traits_::DataType;
 
     using PipelineProblem = ck_tile::SmoothquantPipelineProblem<
-        typename MoeSmoothquantTypeConfig<InputType, OutputType>::XDataType,
-        typename MoeSmoothquantTypeConfig<InputType, OutputType>::SmoothScaleDataType,
-        typename MoeSmoothquantTypeConfig<InputType, OutputType>::ComputeDataType,
-        typename MoeSmoothquantTypeConfig<InputType, OutputType>::YScaleDataType,
-        typename MoeSmoothquantTypeConfig<InputType, OutputType>::QYDataType,
+        typename MoeSmoothquantTypeConfig<DataType>::XDataType,
+        typename MoeSmoothquantTypeConfig<DataType>::XScaleDataType,
+        typename MoeSmoothquantTypeConfig<DataType>::ComputeDataType,
+        typename MoeSmoothquantTypeConfig<DataType>::YScaleDataType,
+        typename MoeSmoothquantTypeConfig<DataType>::QYDataType,
         typename Traits_::Shape,
         Traits_::kPadN,
         Traits_::kTwoPass>;

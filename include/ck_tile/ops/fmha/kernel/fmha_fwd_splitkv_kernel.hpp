@@ -47,15 +47,9 @@ struct FmhaFwdSplitKVKernel
     static constexpr bool kStoreLSE         = FmhaPipeline::kStoreLSE;
     static constexpr bool kDoFp8StaticQuant = FmhaPipeline::Problem::kDoFp8StaticQuant;
     static constexpr bool kIsPagedKV        = FmhaPipeline::Problem::kIsPagedKV;
-    static constexpr bool kMergeNumHeadGroupsSeqLenQ =
-        FmhaPipeline::Problem::kMergeNumHeadGroupsSeqLenQ;
 
     using FmhaMask                 = ck_tile::remove_cvref_t<typename FmhaPipeline::FmhaMask>;
     static constexpr bool kHasMask = FmhaMask::IsMasking;
-
-    static_assert(!kMergeNumHeadGroupsSeqLenQ ||
-                  (kMergeNumHeadGroupsSeqLenQ && BiasEnum == BlockAttentionBiasEnum::NO_BIAS &&
-                   !kHasMask));
 
     // clang-format off
     template <typename T> struct t2s;
@@ -94,10 +88,9 @@ struct FmhaFwdSplitKVKernel
             "w" + _TS_(g0wt::at(ck_tile::number<0>{})) + "x" + _TS_(g0wt::at(ck_tile::number<1>{})) + "x" + _TS_(g0wt::at(ck_tile::number<2>{})) + "_" +
             "w" + _TS_(g1wt::at(ck_tile::number<0>{})) + "x" + _TS_(g1wt::at(ck_tile::number<1>{})) + "x" + _TS_(g1wt::at(ck_tile::number<2>{})) + "_" +
             (kBlockPerCuInput == -1 ? "" : ("o" + _TS_(kBlockPerCu) + "_")) + _SS_(FmhaPipeline::name) + "_" +
-            "v" + (std::is_same_v<VLayout, ck_tile::tensor_layout::gemm::RowMajor> ? "r" : "c") + (pn.empty() ? "_npad" : "_" + pn) +
-            (BiasEnum == BlockAttentionBiasEnum::NO_BIAS ? _SS_("_nbias") : (_SS_("_") + BlockAttentionBiasEnumToStr<BiasEnum>::name)) + 
-            (kHasMask ? "_" + _SS_(FmhaMask::name) : "_nmask") + (kStoreLSE ? "_lse" : "_nlse" ) + 
-            (kDoFp8StaticQuant ? "_squant" : "_nsquant") + (kIsPagedKV ? "_pagedkv" : "_npagedkv" );
+            "v" + (std::is_same_v<VLayout, ck_tile::tensor_layout::gemm::RowMajor> ? "r" : "c") + (pn.empty() ? "" : "_" + pn) +
+            (BiasEnum == BlockAttentionBiasEnum::NO_BIAS ? _SS_("") : (_SS_("_") + BlockAttentionBiasEnumToStr<BiasEnum>::name)) + 
+            (kHasMask ? "_" + _SS_(FmhaMask::name) : "") + (kStoreLSE ? "_lse" : "" ) + (kDoFp8StaticQuant ? "_squant" : "") + (kIsPagedKV ? "_pagedkv" : "" );
         #undef _SS_
         #undef _TS_
         // clang-format on
@@ -483,20 +476,15 @@ struct FmhaFwdSplitKVKernel
     }
 
     CK_TILE_HOST static constexpr auto GridSize(ck_tile::index_t batch_size,
-                                                ck_tile::index_t nhead_q,
-                                                ck_tile::index_t nhead_kv,
+                                                ck_tile::index_t nhead,
                                                 ck_tile::index_t max_seqlen_q,
                                                 ck_tile::index_t hdim_v,
                                                 ck_tile::index_t num_splits)
     {
-        ck_tile::index_t nhead_ = kMergeNumHeadGroupsSeqLenQ ? nhead_kv : nhead_q;
-        ck_tile::index_t max_seqlen_q_ =
-            max_seqlen_q * (kMergeNumHeadGroupsSeqLenQ ? nhead_q / nhead_kv : 1);
-
         // TODO: this may need tuning
-        return dim3(ck_tile::integer_divide_ceil(max_seqlen_q_, FmhaPipeline::kM0) *
+        return dim3(ck_tile::integer_divide_ceil(max_seqlen_q, FmhaPipeline::kM0) *
                         ck_tile::integer_divide_ceil(hdim_v, FmhaPipeline::kN1) * num_splits,
-                    nhead_,
+                    nhead,
                     batch_size);
     }
 
@@ -574,7 +562,7 @@ struct FmhaFwdSplitKVKernel
 
             // # of required blocks is different in each groups, terminate unnecessary blocks
             // earlier
-            if(kargs.seqlen_q * (kMergeNumHeadGroupsSeqLenQ ? kargs.nhead_ratio_qk : 1) <= i_m0)
+            if(kargs.seqlen_q <= i_m0)
             {
                 return;
             }
@@ -629,60 +617,30 @@ struct FmhaFwdSplitKVKernel
         }
 
         // for simplicity, batch stride we just modify the pointer
-        const index_t i_nhead_k =
-            (kMergeNumHeadGroupsSeqLenQ ? i_nhead : i_nhead / kargs.nhead_ratio_qk);
-
         const QDataType* q_ptr = reinterpret_cast<const QDataType*>(kargs.q_ptr) +
-                                 static_cast<long_index_t>(i_nhead) *
-                                     (kMergeNumHeadGroupsSeqLenQ ? kargs.nhead_ratio_qk : 1) *
-                                     kargs.nhead_stride_q +
+                                 static_cast<long_index_t>(i_nhead) * kargs.nhead_stride_q +
                                  batch_offset_q;
-        const KDataType* k_ptr = reinterpret_cast<const KDataType*>(kargs.k_ptr) +
-                                 static_cast<long_index_t>(i_nhead_k) * kargs.nhead_stride_k +
-                                 batch_offset_k;
-        const VDataType* v_ptr = reinterpret_cast<const VDataType*>(kargs.v_ptr) +
-                                 static_cast<long_index_t>(i_nhead_k) * kargs.nhead_stride_v +
-                                 batch_offset_v;
+        const KDataType* k_ptr =
+            reinterpret_cast<const KDataType*>(kargs.k_ptr) +
+            static_cast<long_index_t>(i_nhead / kargs.nhead_ratio_qk) * kargs.nhead_stride_k +
+            batch_offset_k;
+        const VDataType* v_ptr =
+            reinterpret_cast<const VDataType*>(kargs.v_ptr) +
+            static_cast<long_index_t>(i_nhead / kargs.nhead_ratio_qk) * kargs.nhead_stride_v +
+            batch_offset_v;
 
         ODataType* o_acc_ptr = reinterpret_cast<ODataType*>(kargs.o_acc_ptr) +
-                               static_cast<long_index_t>(i_nhead) *
-                                   (kMergeNumHeadGroupsSeqLenQ ? kargs.nhead_ratio_qk : 1) *
-                                   kargs.nhead_stride_o_acc +
+                               static_cast<long_index_t>(i_nhead) * kargs.nhead_stride_o_acc +
                                batch_offset_o_acc + i_split * kargs.split_stride_o_acc;
 
         // Q/K/V DRAM and DRAM window
-        const auto q_dram = [&] {
-            const auto q_dram_naive = [&] {
-                if constexpr(kMergeNumHeadGroupsSeqLenQ)
-                {
-                    // reshape: (nhead_ratio_qk, seqlen_q, hdim_q) -> (nhead_ratio_qk * seqlen_q,
-                    // hdim_q)
-                    const auto view = make_naive_tensor_view<address_space_enum::global>(
-                        q_ptr,
-                        make_tuple(kargs.nhead_ratio_qk, kargs.seqlen_q, kargs.hdim_q),
-                        make_tuple(kargs.nhead_stride_q, kargs.stride_q, 1),
-                        number<FmhaPipeline::kAlignmentQ>{},
-                        number<1>{});
-
-                    return transform_tensor_view(
-                        view,
-                        make_tuple(
-                            make_merge_transform(make_tuple(kargs.nhead_ratio_qk, kargs.seqlen_q)),
-                            make_pass_through_transform(kargs.hdim_q)),
-                        make_tuple(sequence<0, 1>{}, sequence<2>{}),
-                        make_tuple(sequence<0>{}, sequence<1>{}));
-                }
-                else
-                {
-                    return make_naive_tensor_view<address_space_enum::global>(
-                        q_ptr,
-                        make_tuple(kargs.seqlen_q, kargs.hdim_q),
-                        make_tuple(kargs.stride_q, 1),
-                        number<FmhaPipeline::kAlignmentQ>{},
-                        number<1>{});
-                }
-            }();
-
+        const auto q_dram = [&]() {
+            const auto q_dram_naive = make_naive_tensor_view<address_space_enum::global>(
+                q_ptr,
+                make_tuple(kargs.seqlen_q, kargs.hdim_q),
+                make_tuple(kargs.stride_q, 1),
+                number<FmhaPipeline::kAlignmentQ>{},
+                number<1>{});
             if constexpr(FmhaPipeline::kQLoadOnce)
             {
                 return pad_tensor_view(
@@ -743,7 +701,7 @@ struct FmhaFwdSplitKVKernel
                 return pad_tensor_view(
                     v_dram_transposed,
                     make_tuple(number<FmhaPipeline::kN1>{}, number<FmhaPipeline::kK1>{}),
-                    sequence<kPadHeadDimV, kPadSeqLenK>{});
+                    sequence<kPadHeadDimV, false>{});
             }
             else
             {
@@ -771,7 +729,7 @@ struct FmhaFwdSplitKVKernel
             }
         }();
 
-        auto k_page_block_navigator = [&, i_batch_ = i_batch]() {
+        auto k_page_block_navigator = [&, i_batch_ = i_batch, i_nhead_ = i_nhead]() {
             if constexpr(kIsPagedKV)
             {
                 const auto* block_indices =
@@ -781,7 +739,8 @@ struct FmhaFwdSplitKVKernel
                     integer_divide_ceil(kv_l2p_offset + kargs.seqlen_k, kargs.page_block_size);
 
                 const long_index_t fixed_offset =
-                    static_cast<long_index_t>(i_nhead_k) * kargs.nhead_stride_k;
+                    static_cast<long_index_t>(i_nhead_ / kargs.nhead_ratio_qk) *
+                    kargs.nhead_stride_k;
 
                 return make_page_block_navigator<const KDataType, 0>(
                     kargs.k_ptr,
@@ -801,7 +760,7 @@ struct FmhaFwdSplitKVKernel
             }
         }();
 
-        auto v_page_block_navigator = [&, i_batch_ = i_batch]() {
+        auto v_page_block_navigator = [&, i_batch_ = i_batch, i_nhead_ = i_nhead]() {
             if constexpr(kIsPagedKV)
             {
                 const auto* block_indices =
@@ -811,7 +770,8 @@ struct FmhaFwdSplitKVKernel
                     integer_divide_ceil(kv_l2p_offset + kargs.seqlen_k, kargs.page_block_size);
 
                 const long_index_t fixed_offset =
-                    static_cast<long_index_t>(i_nhead_k) * kargs.nhead_stride_v;
+                    static_cast<long_index_t>(i_nhead_ / kargs.nhead_ratio_qk) *
+                    kargs.nhead_stride_v;
 
                 return make_page_block_navigator<const VDataType, 1>(
                     kargs.v_ptr,
@@ -882,40 +842,19 @@ struct FmhaFwdSplitKVKernel
         // lse acc
         auto lse_acc_dram_window = [&, i_nhead_ = i_nhead, i_split_ = i_split]() {
             constexpr auto lse_acc_dram_window_lengths = make_tuple(number<FmhaPipeline::kM0>{});
-            LSEDataType* lse_acc_ptr = reinterpret_cast<LSEDataType*>(kargs.lse_acc_ptr) +
-                                       static_cast<long_index_t>(i_nhead_) *
-                                           (kMergeNumHeadGroupsSeqLenQ ? kargs.nhead_ratio_qk : 1) *
-                                           kargs.nhead_stride_lse_acc +
-                                       batch_offset_lse_acc + i_split_ * kargs.split_stride_lse_acc;
+            LSEDataType* lse_acc_ptr =
+                reinterpret_cast<LSEDataType*>(kargs.lse_acc_ptr) +
+                static_cast<long_index_t>(i_nhead_) * kargs.nhead_stride_lse_acc +
+                batch_offset_lse_acc + i_split_ * kargs.split_stride_lse_acc;
 
-            const auto lse_acc_dram = [&] {
-                const auto lse_acc_dram_naive = [&] {
-                    if constexpr(kMergeNumHeadGroupsSeqLenQ)
-                    {
-                        // reshape: (nhead_ratio_qk, seqlen_q) -> (nhead_ratio_qk * seqlen_q)
-                        const auto view = make_naive_tensor_view<address_space_enum::global>(
-                            lse_acc_ptr,
-                            make_tuple(kargs.nhead_ratio_qk, kargs.seqlen_q),
-                            make_tuple(kargs.nhead_stride_lse_acc, 1),
-                            number<1>{},
-                            number<1>{});
+            const auto lse_acc_dram = [&]() {
+                const auto lse_acc_dram_naive =
+                    make_naive_tensor_view<address_space_enum::global>(lse_acc_ptr,
+                                                                       make_tuple(kargs.seqlen_q),
+                                                                       make_tuple(1),
+                                                                       number<1>{},
+                                                                       number<1>{});
 
-                        return transform_tensor_view(view,
-                                                     make_tuple(make_merge_transform(make_tuple(
-                                                         kargs.nhead_ratio_qk, kargs.seqlen_q))),
-                                                     make_tuple(sequence<0, 1>{}),
-                                                     make_tuple(sequence<0>{}));
-                    }
-                    else
-                    {
-                        return make_naive_tensor_view<address_space_enum::global>(
-                            lse_acc_ptr,
-                            make_tuple(kargs.seqlen_q),
-                            make_tuple(1),
-                            number<1>{},
-                            number<1>{});
-                    }
-                }();
                 return pad_tensor_view(
                     lse_acc_dram_naive, lse_acc_dram_window_lengths, sequence<kPadSeqLenQ>{});
             }();
@@ -1014,37 +953,13 @@ struct FmhaFwdSplitKVKernel
         }();
 
         // Oacc DRAM and Oacc DRAM window
-        auto o_acc_dram = [&] {
-            const auto o_acc_dram_naive = [&] {
-                if constexpr(kMergeNumHeadGroupsSeqLenQ)
-                {
-                    // reshape: (nhead_ratio_qk, seqlen_q, hdim_v) -> (nhead_ratio_qk * seqlen_q,
-                    // hdim_v)
-                    const auto view = make_naive_tensor_view<address_space_enum::global>(
-                        o_acc_ptr,
-                        make_tuple(kargs.nhead_ratio_qk, kargs.seqlen_q, kargs.hdim_v),
-                        make_tuple(kargs.nhead_stride_o_acc, kargs.stride_o_acc, 1),
-                        number<FmhaPipeline::kAlignmentOacc>{},
-                        number<1>{});
-
-                    return transform_tensor_view(
-                        view,
-                        make_tuple(
-                            make_merge_transform(make_tuple(kargs.nhead_ratio_qk, kargs.seqlen_q)),
-                            make_pass_through_transform(kargs.hdim_v)),
-                        make_tuple(sequence<0, 1>{}, sequence<2>{}),
-                        make_tuple(sequence<0>{}, sequence<1>{}));
-                }
-                else
-                {
-                    return make_naive_tensor_view<address_space_enum::global>(
-                        o_acc_ptr,
-                        make_tuple(kargs.seqlen_q, kargs.hdim_v),
-                        make_tuple(kargs.stride_o_acc, 1),
-                        number<FmhaPipeline::kAlignmentOacc>{},
-                        number<1>{});
-                }
-            }();
+        auto o_acc_dram = [&]() {
+            const auto o_acc_dram_naive = make_naive_tensor_view<address_space_enum::global>(
+                o_acc_ptr,
+                make_tuple(kargs.seqlen_q, kargs.hdim_v),
+                make_tuple(kargs.stride_o_acc, 1),
+                number<FmhaPipeline::kAlignmentOacc>{},
+                number<1>{});
 
             return pad_tensor_view(
                 o_acc_dram_naive,

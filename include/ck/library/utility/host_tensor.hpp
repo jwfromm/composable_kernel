@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2018-2025, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2018-2024, Advanced Micro Devices, Inc. All rights reserved.
 
 #pragma once
 
 #include <algorithm>
 #include <cassert>
 #include <iostream>
-#include <fstream>
 #include <numeric>
 #include <thread>
 #include <utility>
@@ -45,18 +44,9 @@ std::ostream& LogRangeAsType(std::ostream& os, Range&& range, std::string delim)
         else
             os << delim;
 
-        using RangeType = ck::remove_cvref_t<decltype(v)>;
-        if constexpr(std::is_same_v<RangeType, ck::f8_t> || std::is_same_v<RangeType, ck::bf8_t> ||
-                     std::is_same_v<RangeType, ck::bhalf_t>)
+        if constexpr(std::is_same_v<T, ck::f8_t> || std::is_same_v<T, ck::bf8_t>)
         {
             os << ck::type_convert<float>(v);
-        }
-        else if constexpr(std::is_same_v<RangeType, ck::pk_i4_t>)
-        {
-            const auto packed_floats = ck::type_convert<ck::float2_t>(v);
-            const ck::vector_type<float, 2> vector_of_floats{packed_floats};
-            os << vector_of_floats.template AsType<float>()[ck::Number<0>{}] << delim
-               << vector_of_floats.template AsType<float>()[ck::Number<1>{}];
         }
         else
         {
@@ -276,18 +266,18 @@ struct Tensor
     using Data       = std::vector<T>;
 
     template <typename X>
-    Tensor(std::initializer_list<X> lens) : mDesc(lens), mData(GetElementSpaceSize())
+    Tensor(std::initializer_list<X> lens) : mDesc(lens), mData(mDesc.GetElementSpaceSize())
     {
     }
 
     template <typename X, typename Y>
     Tensor(std::initializer_list<X> lens, std::initializer_list<Y> strides)
-        : mDesc(lens, strides), mData(GetElementSpaceSize())
+        : mDesc(lens, strides), mData(mDesc.GetElementSpaceSize())
     {
     }
 
     template <typename Lengths>
-    Tensor(const Lengths& lens) : mDesc(lens), mData(GetElementSpaceSize())
+    Tensor(const Lengths& lens) : mDesc(lens), mData(mDesc.GetElementSpaceSize())
     {
     }
 
@@ -297,7 +287,7 @@ struct Tensor
     {
     }
 
-    Tensor(const Descriptor& desc) : mDesc(desc), mData(GetElementSpaceSize()) {}
+    Tensor(const Descriptor& desc) : mDesc(desc), mData(mDesc.GetElementSpaceSize()) {}
 
     template <typename OutT>
     Tensor<OutT> CopyAsType() const
@@ -323,32 +313,7 @@ struct Tensor
     explicit Tensor(const Tensor<FromT>& other) : Tensor(other.template CopyAsType<T>())
     {
     }
-    void savetxt(std::string file_name, std::string dtype = "float")
-    {
-        std::ofstream file(file_name);
 
-        if(file.is_open())
-        {
-            for(auto& itm : mData)
-            {
-                if(dtype == "float")
-                    file << ck::type_convert<float>(itm) << std::endl;
-                else if(dtype == "int")
-                    file << ck::type_convert<int>(itm) << std::endl;
-                else
-                    // TODO: we didn't implement operator<< for all custom
-                    // data types, here fall back to float in case compile error
-                    file << ck::type_convert<float>(itm) << std::endl;
-            }
-            file.close();
-        }
-        else
-        {
-            // Print an error message to the standard error
-            // stream if the file cannot be opened.
-            throw std::runtime_error(std::string("unable to open file:") + file_name);
-        }
-    }
     decltype(auto) GetLengths() const { return mDesc.GetLengths(); }
 
     decltype(auto) GetStrides() const { return mDesc.GetStrides(); }
@@ -357,17 +322,7 @@ struct Tensor
 
     std::size_t GetElementSize() const { return mDesc.GetElementSize(); }
 
-    std::size_t GetElementSpaceSize() const
-    {
-        if constexpr(ck::is_same_v<ck::remove_cvref_t<T>, ck::pk_i4_t>)
-        {
-            return (mDesc.GetElementSpaceSize() + 1) / 2;
-        }
-        else
-        {
-            return mDesc.GetElementSpaceSize();
-        }
-    }
+    std::size_t GetElementSpaceSize() const { return mDesc.GetElementSpaceSize(); }
 
     std::size_t GetElementSpaceSizeInBytes() const { return sizeof(T) * GetElementSpaceSize(); }
 
@@ -514,64 +469,29 @@ struct Tensor
     template <typename... Is>
     std::size_t GetOffsetFromMultiIndex(Is... is) const
     {
-        if constexpr(ck::is_same_v<ck::remove_cvref_t<T>, ck::pk_i4_t>)
-        {
-            return mDesc.GetOffsetFromMultiIndex(is...) / 2;
-        }
-        else
-        {
-            return mDesc.GetOffsetFromMultiIndex(is...);
-        }
+        return mDesc.GetOffsetFromMultiIndex(is...);
     }
 
     template <typename... Is>
     T& operator()(Is... is)
     {
-        if constexpr(ck::is_same_v<ck::remove_cvref_t<T>, ck::pk_i4_t>)
-        {
-            return mData[mDesc.GetOffsetFromMultiIndex(is...) / 2];
-        }
-        else
-        {
-            return mData[mDesc.GetOffsetFromMultiIndex(is...)];
-        }
+        return mData[mDesc.GetOffsetFromMultiIndex(is...)];
     }
 
     template <typename... Is>
     const T& operator()(Is... is) const
     {
-        if constexpr(ck::is_same_v<ck::remove_cvref_t<T>, ck::pk_i4_t>)
-        {
-            return mData[mDesc.GetOffsetFromMultiIndex(is...) / 2];
-        }
-        else
-        {
-            return mData[mDesc.GetOffsetFromMultiIndex(is...)];
-        }
+        return mData[mDesc.GetOffsetFromMultiIndex(is...)];
     }
 
     T& operator()(std::vector<std::size_t> idx)
     {
-        if constexpr(ck::is_same_v<ck::remove_cvref_t<T>, ck::pk_i4_t>)
-        {
-            return mData[mDesc.GetOffsetFromMultiIndex(idx) / 2];
-        }
-        else
-        {
-            return mData[mDesc.GetOffsetFromMultiIndex(idx)];
-        }
+        return mData[mDesc.GetOffsetFromMultiIndex(idx)];
     }
 
     const T& operator()(std::vector<std::size_t> idx) const
     {
-        if constexpr(ck::is_same_v<ck::remove_cvref_t<T>, ck::pk_i4_t>)
-        {
-            return mData[mDesc.GetOffsetFromMultiIndex(idx) / 2];
-        }
-        else
-        {
-            return mData[mDesc.GetOffsetFromMultiIndex(idx)];
-        }
+        return mData[mDesc.GetOffsetFromMultiIndex(idx)];
     }
 
     typename Data::iterator begin() { return mData.begin(); }

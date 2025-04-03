@@ -39,13 +39,6 @@ function(add_instance_library INSTANCE_NAME)
 
     set(INST_TARGETS ${SUPPORTED_GPU_TARGETS})
 
-    # Do not build DPP instances if DPP_KERNELS macro is not set
-    foreach(source IN LISTS ARGN)
-        if(NOT DEFINED DPP_KERNELS AND source MATCHES "_dpp")
-            message("removing dpp instance ${source} ")
-            list(REMOVE_ITEM ARGN "${source}")
-        endif()
-    endforeach()
     # Do not build DL instances if DL_KERNELS macro is not set
     foreach(source IN LISTS ARGN)
         if(NOT DEFINED DL_KERNELS AND source MATCHES "_dl")
@@ -69,7 +62,7 @@ function(add_instance_library INSTANCE_NAME)
     endforeach()
     # Do not build mha instances if gfx94 or gfx90a targets are not on the target list
     foreach(source IN LISTS ARGN)
-	    if(NOT INST_TARGETS MATCHES "gfx94" AND NOT INST_TARGETS MATCHES "gfx90a" AND NOT INST_TARGETS MATCHES "gfx95" AND source MATCHES "mha")
+	    if(NOT INST_TARGETS MATCHES "gfx94" AND NOT INST_TARGETS MATCHES "gfx90a" AND source MATCHES "mha")
          message("removing mha instance ${source} ")
          list(REMOVE_ITEM ARGN "${source}")
     endif()
@@ -77,14 +70,26 @@ function(add_instance_library INSTANCE_NAME)
     # Do not build gemm_universal_f8 or gemm_multiply_multiply_f8 for any targets except gfx94
     if(NOT CK_USE_FP8_ON_UNSUPPORTED_ARCH)
     foreach(source IN LISTS ARGN)
-    if(NOT INST_TARGETS MATCHES "gfx94" AND NOT INST_TARGETS MATCHES "gfx95" AND source MATCHES "gemm_multiply_multiply" AND source MATCHES "_f8_")
+    if(NOT INST_TARGETS MATCHES "gfx94" AND source MATCHES "gemm_multiply_multiply_xdl_f8")
          message("removing gemm_multiply_multiply_f8 instance ${source} ")
          list(REMOVE_ITEM ARGN "${source}")
     endif()
     endforeach()
     foreach(source IN LISTS ARGN)
-    if(NOT INST_TARGETS MATCHES "gfx94" AND NOT INST_TARGETS MATCHES "gfx95" AND source MATCHES "gemm_xdl_universal" AND source MATCHES "_f8_")
+    if(NOT INST_TARGETS MATCHES "gfx94" AND source MATCHES "gemm_xdl_universal" AND source MATCHES "_f8_")
          message("removing gemm_universal_f8 instance ${source} ")
+         list(REMOVE_ITEM ARGN "${source}")
+    endif()
+    endforeach()
+    foreach(source IN LISTS ARGN)
+    if(NOT INST_TARGETS MATCHES "gfx94" AND source MATCHES "batched_gemm_xdl_universal" AND source MATCHES "_f8_")
+         message("removing batched_gemm_universal_f8 instance ${source} ")
+         list(REMOVE_ITEM ARGN "${source}")
+    endif()
+    endforeach()
+    foreach(source IN LISTS ARGN)
+    if(NOT INST_TARGETS MATCHES "gfx94" AND source MATCHES "gemm_xdl_universal_streamk" AND source MATCHES "_f8_")
+         message("removing gemm_universal_streamk_f8 instance ${source} ")
          list(REMOVE_ITEM ARGN "${source}")
     endif()
     endforeach()
@@ -97,25 +102,21 @@ function(add_instance_library INSTANCE_NAME)
             if(source MATCHES "_xdl")
                 list(REMOVE_ITEM INST_TARGETS gfx900 gfx906 gfx906:xnack- gfx1030 gfx1100 gfx1101 gfx1102 gfx1103 gfx1200 gfx1201 gfx10.3-generic gfx11-generic gfx12-generic)
             elseif(source MATCHES "_wmma")
-                list(REMOVE_ITEM INST_TARGETS gfx900 gfx906 gfx906:xnack- gfx908:xnack+ gfx908:xnack- gfx90a:xnack+ gfx90a:xnack- gfx908 gfx90a gfx942 gfx1030 gfx950)
+                list(REMOVE_ITEM INST_TARGETS gfx900 gfx906 gfx906:xnack- gfx908:xnack+ gfx908:xnack- gfx90a:xnack+ gfx90a:xnack- gfx908 gfx90a gfx940 gfx941 gfx942 gfx1030)
             elseif(source MATCHES "mha")
                 list(REMOVE_ITEM INST_TARGETS gfx900 gfx906 gfx906:xnack- gfx908:xnack- gfx908:xnack+ gfx908 gfx1030 gfx1100 gfx1101 gfx1102 gfx1103 gfx1200 gfx1201 gfx10.3-generic gfx11-generic gfx12-generic)
             endif()
-            #only build the fp8 gemm instances for gfx90a if the build argument is set, otherwise only build for gfx942/gfx950
+            #only build the fp8 gemm instances for gfx908/90a if the build argument is set
             if(NOT CK_USE_FP8_ON_UNSUPPORTED_ARCH)
                 if(source MATCHES "gemm_xdl_universal" AND source MATCHES "f8")
                     list(REMOVE_ITEM INST_TARGETS gfx900 gfx906 gfx906:xnack- gfx908:xnack- gfx908:xnack+ gfx90a:xnack+ gfx90a:xnack- gfx908 gfx90a gfx1030 gfx1100 gfx1101 gfx1102 gfx1103 gfx1200 gfx1201 gfx10.3-generic gfx11-generic gfx12-generic)
                 endif()
-                if(source MATCHES "gemm_multiply_multiply" AND source MATCHES "f8")
+                if(source MATCHES "gemm_multiply_multiply_f8")
                     list(REMOVE_ITEM INST_TARGETS gfx900 gfx906 gfx906:xnack- gfx908:xnack- gfx908:xnack+ gfx90a:xnack+ gfx90a:xnack- gfx908 gfx90a gfx1030 gfx1100 gfx1101 gfx1102 gfx1103 gfx1200 gfx1201 gfx10.3-generic gfx11-generic gfx12-generic)
                 endif()
-            else()
-                if(source MATCHES "gemm_xdl_universal" AND source MATCHES "f8")
-                    list(REMOVE_ITEM INST_TARGETS gfx900 gfx906 gfx906:xnack- gfx908:xnack- gfx908:xnack+ gfx908 gfx1030 gfx1100 gfx1101 gfx1102 gfx1103 gfx1200 gfx1201 gfx10.3-generic gfx11-generic gfx12-generic)
+                if(source MATCHES "bached_gemm_multiply_multiply_f8")
+                    list(REMOVE_ITEM INST_TARGETS gfx900 gfx906 gfx906:xnack- gfx908:xnack- gfx908:xnack+ gfx90a:xnack+ gfx90a:xnack- gfx908 gfx90a gfx1030 gfx1100 gfx1101 gfx1102 gfx1103 gfx1200 gfx1201 gfx10.3-generic gfx11-generic gfx12-generic)
                 endif()
-                if(source MATCHES "gemm_multiply_multiply" AND source MATCHES "f8")
-                    list(REMOVE_ITEM INST_TARGETS gfx900 gfx906 gfx906:xnack- gfx908:xnack- gfx908:xnack+ gfx908 gfx1030 gfx1100 gfx1101 gfx1102 gfx1103 gfx1200 gfx1201 gfx10.3-generic gfx11-generic gfx12-generic)
-                endif()    
             endif()
             set(offload_targets)
             foreach(target IN LISTS INST_TARGETS)
@@ -182,10 +183,6 @@ FOREACH(subdir_path ${dir_list})
             message("bf8 instance found!")
             set(add_inst 1)
         endif()
-        if(("${cmake_instance}" MATCHES "_bf16" OR "${cmake_instance}" MATCHES "_b16") AND DTYPES MATCHES "bf16")
-            message("bf16 instance found!")
-            set(add_inst 1)
-        endif()
         if(("${cmake_instance}" MATCHES "_fp16" OR "${cmake_instance}" MATCHES "_f16") AND DTYPES MATCHES "fp16")
             message("fp16 instance found!")
             set(add_inst 1)
@@ -196,6 +193,10 @@ FOREACH(subdir_path ${dir_list})
         endif()
         if(("${cmake_instance}" MATCHES "_fp64" OR "${cmake_instance}" MATCHES "_f64") AND DTYPES MATCHES "fp64")
             message("fp64 instance found!")
+            set(add_inst 1)
+        endif()
+        if("${cmake_instance}" MATCHES "_bf16" AND DTYPES MATCHES "bf16")
+            message("bf16 instance found!")
             set(add_inst 1)
         endif()
         if(("${cmake_instance}" MATCHES "_int8" OR "${cmake_instance}" MATCHES "_i8") AND DTYPES MATCHES "int8")
@@ -235,7 +236,7 @@ FOREACH(subdir_path ${dir_list})
             message("Found only xdl instances, but gfx9 is not on the targets list. Skipping.")
             set(add_inst 0)
         endif()
-	    if(("${cmake_instance}" MATCHES "ONLY WMMA_KERNELS") AND (NOT INST_TARGETS MATCHES "gfx11") AND (NOT INST_TARGETS MATCHES "gfx12"))
+	if(("${cmake_instance}" MATCHES "ONLY WMMA_KERNELS") AND (NOT INST_TARGETS MATCHES "gfx11") AND (NOT INST_TARGETS MATCHES "gfx12"))
             message("Found only wmma instances, but gfx11 is not on the targets list. Skipping.")
             set(add_inst 0)
         endif()
@@ -243,16 +244,12 @@ FOREACH(subdir_path ${dir_list})
             message("Found only xdl and dl instances, but gfx9 is not on the targets listand DL_KERNELS is not set. Skipping.")
             set(add_inst 0)
         endif()
-	    if(("${cmake_instance}" MATCHES "ONLY XDL_AND_WMMA_KERNELS") AND (NOT INST_TARGETS MATCHES "gfx11") AND (NOT INST_TARGETS MATCHES "gfx12") AND (NOT INST_TARGETS MATCHES "gfx9"))
+	if(("${cmake_instance}" MATCHES "ONLY XDL_AND_WMMA_KERNELS") AND (NOT INST_TARGETS MATCHES "gfx11") AND (NOT INST_TARGETS MATCHES "gfx12") AND (NOT INST_TARGETS MATCHES "gfx9"))
             message("Found only xdl and wmma instances, but gfx11 and gfx9 are not on the targets list. Skipping.")
             set(add_inst 0)
         endif()
-	    if(("${cmake_instance}" MATCHES "XDL_DL_WMMA_KERNELS") AND (NOT INST_TARGETS MATCHES "gfx11") AND (NOT INST_TARGETS MATCHES "gfx12") AND (NOT INST_TARGETS MATCHES "gfx9") AND (NOT DEFINED DL_KERNELS))
+	if(("${cmake_instance}" MATCHES "XDL_DL_WMMA_KERNELS") AND (NOT INST_TARGETS MATCHES "gfx11") AND (NOT INST_TARGETS MATCHES "gfx12") AND (NOT INST_TARGETS MATCHES "gfx9") AND (NOT DEFINED DL_KERNELS))
             message("Found xdl, dl, and wmma instances, but none of those meet the target list. Skipping.")
-            set(add_inst 0)
-        endif()
-        if(("${cmake_instance}" MATCHES "gemm_multiply_multiply" AND "${cmake_instance}" MATCHES "_f8_" ) AND (NOT INST_TARGETS MATCHES "gfx94") AND (NOT INST_TARGETS MATCHES "gfx95") AND (NOT CK_USE_FP8_ON_UNSUPPORTED_ARCH))
-            message("Found gemm_multiply_multiply_f8 instances, but gfx94/gfx95 not on the target list. Skipping.")
             set(add_inst 0)
         endif()
         if((add_inst EQUAL 1))
@@ -281,14 +278,9 @@ ENDFOREACH()
 
 
 if(CK_DEVICE_OTHER_INSTANCES)
-        add_library(device_other_operations ${CK_DEVICE_OTHER_INSTANCES})
+        add_library(device_other_operations STATIC ${CK_DEVICE_OTHER_INSTANCES})
         add_library(composablekernels::device_other_operations ALIAS device_other_operations)
         set_target_properties(device_other_operations PROPERTIES POSITION_INDEPENDENT_CODE ON)
-        set_target_properties(device_other_operations
-            PROPERTIES
-            VERSION ${CMAKE_PROJECT_VERSION}
-            SOVERSION ${CMAKE_PROJECT_VERSION_MAJOR}
-        )
         target_include_directories(device_other_operations PUBLIC
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/ck>
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/ck/utility>
@@ -317,15 +309,10 @@ if(CK_DEVICE_OTHER_INSTANCES)
         )
 endif()
 if(CK_DEVICE_GEMM_INSTANCES)
-        add_library(device_gemm_operations ${CK_DEVICE_GEMM_INSTANCES})
+        add_library(device_gemm_operations STATIC ${CK_DEVICE_GEMM_INSTANCES})
         add_library(composablekernels::device_gemm_operations ALIAS device_gemm_operations)
         target_compile_features(device_gemm_operations PUBLIC)
         set_target_properties(device_gemm_operations PROPERTIES POSITION_INDEPENDENT_CODE ON)
-        set_target_properties(device_gemm_operations
-            PROPERTIES
-            VERSION ${CMAKE_PROJECT_VERSION}
-            SOVERSION ${CMAKE_PROJECT_VERSION_MAJOR}
-        )
         target_include_directories(device_gemm_operations PUBLIC
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/ck/library/tensor_operation_instance/gpu>
         )
@@ -338,15 +325,10 @@ if(CK_DEVICE_GEMM_INSTANCES)
         )
 endif()
 if(CK_DEVICE_CONV_INSTANCES)
-        add_library(device_conv_operations ${CK_DEVICE_CONV_INSTANCES})
+        add_library(device_conv_operations STATIC ${CK_DEVICE_CONV_INSTANCES})
         add_library(composablekernels::device_conv_operations ALIAS device_conv_operations)
         target_compile_features(device_conv_operations PUBLIC)
         set_target_properties(device_conv_operations PROPERTIES POSITION_INDEPENDENT_CODE ON)
-        set_target_properties(device_conv_operations
-            PROPERTIES
-            VERSION ${CMAKE_PROJECT_VERSION}
-            SOVERSION ${CMAKE_PROJECT_VERSION_MAJOR}
-        )
         target_include_directories(device_conv_operations PUBLIC
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/ck/library/tensor_operation_instance/gpu>
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/ck/library/tensor_operation_instance/gpu/conv_tensor_rearrange>
@@ -364,13 +346,8 @@ if(CK_DEVICE_CONV_INSTANCES)
 endif()
 if(CK_DEVICE_MHA_INSTANCES)
         set(gpu_list ${INST_TARGETS})
-        if(gpu_list MATCHES "gfx94" OR gpu_list MATCHES "gfx90a" OR gpu_list MATCHES "gfx95")
-            add_library(device_mha_operations ${CK_DEVICE_MHA_INSTANCES})
-            set_target_properties(device_mha_operations
-                PROPERTIES
-                VERSION ${CMAKE_PROJECT_VERSION}
-                SOVERSION ${CMAKE_PROJECT_VERSION_MAJOR}
-            )
+	if(gpu_list MATCHES "gfx94" OR gpu_list MATCHES "gfx90a")
+            add_library(device_mha_operations STATIC ${CK_DEVICE_MHA_INSTANCES})
             add_library(composablekernels::device_mha_operations ALIAS device_mha_operations)
             target_compile_features(device_mha_operations PUBLIC)
             set_target_properties(device_mha_operations PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -385,15 +362,10 @@ if(CK_DEVICE_MHA_INSTANCES)
         endif()
 endif()
 if(CK_DEVICE_CONTRACTION_INSTANCES)
-        add_library(device_contraction_operations ${CK_DEVICE_CONTRACTION_INSTANCES})
+        add_library(device_contraction_operations STATIC ${CK_DEVICE_CONTRACTION_INSTANCES})
         add_library(composablekernels::device_contraction_operations ALIAS device_contraction_operations)
         target_compile_features(device_contraction_operations PUBLIC)
         set_target_properties(device_contraction_operations PROPERTIES POSITION_INDEPENDENT_CODE ON)
-        set_target_properties(device_contraction_operations
-            PROPERTIES
-            VERSION ${CMAKE_PROJECT_VERSION}
-            SOVERSION ${CMAKE_PROJECT_VERSION_MAJOR}
-        )
         target_include_directories(device_contraction_operations PUBLIC
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/ck/library/tensor_operation_instance/gpu>
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/ck/library/tensor_operation_instance/gpu/contraction>
@@ -407,15 +379,10 @@ if(CK_DEVICE_CONTRACTION_INSTANCES)
         )
 endif()
 if(CK_DEVICE_REDUCTION_INSTANCES)
-        add_library(device_reduction_operations ${CK_DEVICE_REDUCTION_INSTANCES})
+        add_library(device_reduction_operations STATIC ${CK_DEVICE_REDUCTION_INSTANCES})
         add_library(composablekernels::device_reduction_operations ALIAS device_reduction_operations)
         target_compile_features(device_reduction_operations PUBLIC)
         set_target_properties(device_reduction_operations PROPERTIES POSITION_INDEPENDENT_CODE ON)
-        set_target_properties(device_reduction_operations
-            PROPERTIES
-            VERSION ${CMAKE_PROJECT_VERSION}
-            SOVERSION ${CMAKE_PROJECT_VERSION_MAJOR}
-        )
         target_include_directories(device_reduction_operations PUBLIC
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/ck/library/tensor_operation_instance/gpu/reduce>
         )

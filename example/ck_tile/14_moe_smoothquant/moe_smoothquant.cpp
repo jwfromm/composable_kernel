@@ -63,8 +63,7 @@ auto create_args(int argc, char* argv[])
         .insert("stride", "-1", "stride per row, if -1 then equal to hidden_size")
         .insert("v", "1", "cpu validation or not")
         .insert("kname", "1", "print kernel name or not")
-        .insert("prec_i", "fp16", "input precision, fp16/bf16")
-        .insert("prec_o", "int8", "precision, int8/fp8")
+        .insert("prec", "fp16", "precision")
         .insert("warmup", "5", "cold iter")
         .insert("repeat", "20", "hot iter");
 
@@ -72,7 +71,7 @@ auto create_args(int argc, char* argv[])
     return std::make_tuple(result, arg_parser);
 }
 
-template <typename InputType, typename OutputType>
+template <typename DataType>
 bool run(const ck_tile::ArgParser& arg_parser)
 {
     ck_tile::index_t tokens      = arg_parser.get_int("t");
@@ -82,8 +81,7 @@ bool run(const ck_tile::ArgParser& arg_parser)
         stride = hidden_size;
     ck_tile::index_t experts = arg_parser.get_int("e");
     ck_tile::index_t topk    = arg_parser.get_int("k");
-    std::string prec_i       = arg_parser.get_str("prec_i");
-    std::string prec_o       = arg_parser.get_str("prec_o");
+    std::string data_type    = arg_parser.get_str("prec");
     int kname                = arg_parser.get_int("kname");
     int do_validation        = arg_parser.get_int("v");
     int warmup               = arg_parser.get_int("warmup");
@@ -91,17 +89,17 @@ bool run(const ck_tile::ArgParser& arg_parser)
 
     assert(stride >= hidden_size);
 
-    using TypeConfig = MoeSmoothquantTypeConfig<InputType, OutputType>;
+    using TypeConfig = MoeSmoothquantTypeConfig<DataType>;
 
-    using XDataType           = typename TypeConfig::XDataType;
-    using SmoothScaleDataType = typename TypeConfig::SmoothScaleDataType;
-    using YScaleDataType      = typename TypeConfig::YScaleDataType;
-    using QYDataType          = typename TypeConfig::QYDataType;
-    using ComputeDataType     = typename TypeConfig::ComputeDataType;
+    using XDataType       = typename TypeConfig::XDataType;
+    using XScaleDataType  = typename TypeConfig::XScaleDataType;
+    using YScaleDataType  = typename TypeConfig::YScaleDataType;
+    using QYDataType      = typename TypeConfig::QYDataType;
+    using ComputeDataType = typename TypeConfig::ComputeDataType;
 
     // host verify
     ck_tile::HostTensor<XDataType> x_host({tokens, hidden_size}, {stride, 1});
-    ck_tile::HostTensor<SmoothScaleDataType> smscale_host({experts * hidden_size});
+    ck_tile::HostTensor<XScaleDataType> xscale_host({experts * hidden_size});
     ck_tile::HostTensor<ck_tile::index_t> topk_ids_host({tokens, topk});
 
     ck_tile::HostTensor<YScaleDataType> yscale_host_ref({topk * tokens}, {1});
@@ -112,26 +110,26 @@ bool run(const ck_tile::ArgParser& arg_parser)
 
     topid_unique_gen<ck_tile::index_t>(topk_ids_host.mData, tokens, topk, experts, 11937);
     ck_tile::FillUniformDistribution<XDataType>{-.5f, .5f}(x_host);
-    ck_tile::FillUniformDistribution<SmoothScaleDataType>{1e-3, .5f}(smscale_host);
+    ck_tile::FillUniformDistribution<XScaleDataType>{1e-3, .5f}(xscale_host);
 
     ck_tile::DeviceMem x_buf(x_host.get_element_space_size_in_bytes());
-    ck_tile::DeviceMem smscale_buf(smscale_host.get_element_space_size_in_bytes());
+    ck_tile::DeviceMem xscale_buf(xscale_host.get_element_space_size_in_bytes());
     ck_tile::DeviceMem topk_ids_buf(topk_ids_host.get_element_space_size_in_bytes());
     ck_tile::DeviceMem yscale_buf(yscale_host_dev.get_element_space_size_in_bytes());
     ck_tile::DeviceMem qy_buf(qy_host_dev.get_element_space_size_in_bytes());
 
     x_buf.ToDevice(x_host.data());
-    smscale_buf.ToDevice(smscale_host.data());
+    xscale_buf.ToDevice(xscale_host.data());
     topk_ids_buf.ToDevice(topk_ids_host.data());
 
-    std::cout << "[" << prec_i << "-" << prec_o << "]"
+    std::cout << "[" << data_type << "]"
               << " tokens:" << tokens << ", hidden_size:" << hidden_size << ", stride:" << stride
               << ", experts:" << experts << ", topk:" << topk << std::flush;
 
-    moe_smoothquant_traits traits{prec_i, prec_o};
+    moe_smoothquant_traits traits{data_type};
 
     moe_smoothquant_args args{x_buf.GetDeviceBuffer(),
-                              smscale_buf.GetDeviceBuffer(),
+                              xscale_buf.GetDeviceBuffer(),
                               topk_ids_buf.GetDeviceBuffer(),
                               yscale_buf.GetDeviceBuffer(),
                               qy_buf.GetDeviceBuffer(),
@@ -145,10 +143,9 @@ bool run(const ck_tile::ArgParser& arg_parser)
     float ave_time = moe_smoothquant(
         traits, args, ck_tile::stream_config{nullptr, true, kname ? 1 : 0, warmup, repeat});
 
-    std::size_t num_byte = sizeof(XDataType) * tokens * hidden_size +
-                           sizeof(SmoothScaleDataType) * topk * hidden_size +
-                           sizeof(YScaleDataType) * topk * tokens +
-                           sizeof(QYDataType) * topk * tokens * hidden_size;
+    std::size_t num_byte =
+        sizeof(XDataType) * tokens * hidden_size + sizeof(XScaleDataType) * topk * hidden_size +
+        sizeof(YScaleDataType) * topk * tokens + sizeof(QYDataType) * topk * tokens * hidden_size;
 
     float gb_per_sec = num_byte / 1.E6 / ave_time;
     std::cout << ", " << ave_time * 1.E3 << " us, " << gb_per_sec << " GB/s" << std::flush;
@@ -168,11 +165,11 @@ bool run(const ck_tile::ArgParser& arg_parser)
 
                     for(int i_h = 0; i_h < hidden_size; ++i_h)
                     {
-                        auto v_smscale = ck_tile::type_convert<ComputeDataType>(
-                            smscale_host(i_expert * hidden_size + i_h));
+                        auto v_xscale = ck_tile::type_convert<ComputeDataType>(
+                            xscale_host(i_expert * hidden_size + i_h));
                         auto v_x = ck_tile::type_convert<ComputeDataType>(x_host(i_token, i_h));
-                        // y_host(i_token * topk + i_topk, i_h) = v_x * v_smscale;
-                        y_host(i_topk * tokens + i_token, i_h) = v_x * v_smscale;
+                        // y_host(i_token * topk + i_topk, i_h) = v_x * v_xscale;
+                        y_host(i_topk * tokens + i_token, i_h) = v_x * v_xscale;
                     }
                 }
             };
@@ -253,23 +250,14 @@ int main(int argc, char* argv[])
     if(!result)
         return -1;
 
-    const std::string prec_i = arg_parser.get_str("prec_i");
-    const std::string prec_o = arg_parser.get_str("prec_o");
-    if(prec_i == "fp16" && prec_o == "int8")
+    const std::string data_type = arg_parser.get_str("prec");
+    if(data_type == "fp16")
     {
-        return run<ck_tile::half_t, ck_tile::int8_t>(arg_parser) ? 0 : -2;
+        return run<ck_tile::half_t>(arg_parser) ? 0 : -2;
     }
-    else if(prec_i == "fp16" && prec_o == "fp8")
+    else if(data_type == "bf16")
     {
-        return run<ck_tile::half_t, ck_tile::fp8_t>(arg_parser) ? 0 : -2;
-    }
-    else if(prec_i == "bf16" && prec_o == "int8")
-    {
-        return run<ck_tile::bf16_t, ck_tile::int8_t>(arg_parser) ? 0 : -2;
-    }
-    else if(prec_i == "bf16" && prec_o == "fp8")
-    {
-        return run<ck_tile::bf16_t, ck_tile::fp8_t>(arg_parser) ? 0 : -2;
+        return run<ck_tile::bf16_t>(arg_parser) ? 0 : -2;
     }
 
     return -3;

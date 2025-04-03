@@ -4,8 +4,8 @@
 #pragma once
 
 #include "ck_tile/core.hpp"
-#include "ck_tile/ops/norm_reduce/block/block_norm_reduce_problem.hpp"
-#include "ck_tile/ops/norm_reduce/block/block_norm_reduce.hpp"
+#include "ck_tile/ops/welford/block/block_welford_problem.hpp"
+#include "ck_tile/ops/welford/block/block_welford.hpp"
 
 namespace ck_tile {
 
@@ -43,38 +43,36 @@ struct Layernorm2dFwdPipelineDefaultPolicy
     }
 
     template <typename Problem>
-    CK_TILE_HOST_DEVICE static constexpr auto GetBlockNormReduce()
+    CK_TILE_HOST_DEVICE static constexpr auto GetBlockWelford()
     {
-        using P_ = BlockNormReduceProblem<typename Problem::ComputeDataType,
-                                          typename Problem::ComputeDataType,
-                                          typename Problem::BlockShape,
-                                          Problem::Traits::kFastFDiv,
-                                          Problem::Traits::kWelford>;
-        return BlockNormReduce<P_>{};
+        using P_ = BlockWelfordProblem<typename Problem::ComputeDataType,
+                                       typename Problem::ComputeDataType,
+                                       typename Problem::BlockShape,
+                                       Problem::Traits::kFastFDiv>;
+
+        return BlockWelford<P_>{};
     }
 
     template <typename Problem>
-    CK_TILE_HOST_DEVICE static constexpr auto GetBlockNormReduceSync()
+    CK_TILE_HOST_DEVICE static constexpr auto GetBlockWelfordSync()
     {
-        using P_ = BlockNormReduceProblem<typename Problem::ComputeDataType,
-                                          typename Problem::ComputeDataType,
-                                          typename Problem::BlockShape,
-                                          Problem::Traits::kFastFDiv,
-                                          Problem::Traits::kWelford>;
+        using P_ = BlockWelfordProblem<typename Problem::ComputeDataType,
+                                       typename Problem::ComputeDataType,
+                                       typename Problem::BlockShape,
+                                       Problem::Traits::kFastFDiv>;
 
-        return BlockNormReduceSync<P_>{};
+        return BlockWelfordSync<P_>{};
     }
 
     template <typename Problem>
-    CK_TILE_HOST_DEVICE static constexpr auto GetBlockNormReduceCrossWarpSync()
+    CK_TILE_HOST_DEVICE static constexpr auto GetBlockWelfordCrossWarpSync()
     {
-        using P_ = BlockNormReduceProblem<typename Problem::ComputeDataType,
-                                          typename Problem::ComputeDataType,
-                                          typename Problem::BlockShape,
-                                          Problem::Traits::kFastFDiv,
-                                          Problem::Traits::kWelford>;
+        using P_ = BlockWelfordProblem<typename Problem::ComputeDataType,
+                                       typename Problem::ComputeDataType,
+                                       typename Problem::BlockShape,
+                                       Problem::Traits::kFastFDiv>;
 
-        return BlockNormReduceCrossWarpSync<P_>{};
+        return BlockWelfordCrossWarpSync<P_>{};
     }
 
     template <typename Problem>
@@ -82,20 +80,19 @@ struct Layernorm2dFwdPipelineDefaultPolicy
     {
         if constexpr(Problem::kNeedCrossWarpSync)
         {
-            using P_ = BlockNormReduceProblem<typename Problem::ComputeDataType,
-                                              typename Problem::ComputeDataType,
-                                              typename Problem::BlockShape,
-                                              Problem::Traits::kFastFDiv,
-                                              Problem::Traits::kWelford>;
+            using P_ = BlockWelfordProblem<typename Problem::ComputeDataType,
+                                           typename Problem::ComputeDataType,
+                                           typename Problem::BlockShape,
+                                           Problem::Traits::kFastFDiv>;
 
-            using block_welford = BlockNormReduce<P_>;
+            using block_welford = BlockWelford<P_>;
             using x_block_tile =
                 decltype(make_static_distributed_tensor<typename Problem::ComputeDataType>(
                     MakeXBlockTileDistribution<Problem>()));
             using mean_var_block_tile =
                 decltype(block_welford::template MakeMeanVarBlockTile<x_block_tile>());
 
-            return GetBlockNormReduceCrossWarpSync<Problem>()
+            return GetBlockWelfordCrossWarpSync<Problem>()
                 .template GetSmemSize<mean_var_block_tile>();
         }
         else

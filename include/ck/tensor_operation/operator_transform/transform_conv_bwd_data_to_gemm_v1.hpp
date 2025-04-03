@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2018-2025, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2018-2024, Advanced Micro Devices, Inc. All rights reserved.
 
 #pragma once
 
@@ -106,10 +106,9 @@ struct TransformConvBwdDataToGemm_v1
             }
             else
             {
-                // Split Convolution's N dimension into N workgroups. However
-                // this still might not result in sufficiently small tensor,
-                // but at least later on we could divide the image as well.
-                return 1;
+                // Not possible to support even after split N.
+                // Too large tensor.
+                return N;
             }
         }
         else

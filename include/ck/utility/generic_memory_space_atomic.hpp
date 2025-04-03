@@ -3,7 +3,6 @@
 
 #pragma once
 #include "data_type.hpp"
-#include "dtype_fp64.hpp"
 
 namespace ck {
 
@@ -18,6 +17,13 @@ template <>
 __device__ int32_t atomic_add<int32_t>(int32_t* p_dst, const int32_t& x)
 {
     return atomicAdd(p_dst, x);
+}
+
+template <>
+__device__ unsigned short atomic_add<unsigned short>(unsigned short* p_dst, const unsigned short& x)
+{
+    // Use atomicAdd with unsigned int
+    return static_cast<unsigned short>(atomicAdd(reinterpret_cast<unsigned int*>(p_dst), static_cast<unsigned int>(x)));
 }
 
 template <>

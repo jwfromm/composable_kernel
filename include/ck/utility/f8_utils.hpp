@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "ck/utility/numeric_utils.hpp"
+#include "ck/utility/data_type.hpp"
 
 namespace ck {
 

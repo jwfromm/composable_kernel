@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2018-2025, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2018-2023, Advanced Micro Devices, Inc. All rights reserved.
 
 #pragma once
 
@@ -120,11 +120,11 @@ constexpr auto conditional_expr(X&& x, Y&& y)
 {
     if constexpr(predicate)
     {
-        return ck::forward<X>(x);
+        return std::forward<X>(x);
     }
     else
     {
-        return ck::forward<Y>(y);
+        return std::forward<Y>(y);
     }
 }
 

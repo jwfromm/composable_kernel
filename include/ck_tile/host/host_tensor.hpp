@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2018-2025, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2018-2024, Advanced Micro Devices, Inc. All rights reserved.
 
 #pragma once
 
@@ -281,18 +281,18 @@ struct HostTensor
     using Data       = std::vector<T>;
 
     template <typename X>
-    HostTensor(std::initializer_list<X> lens) : mDesc(lens), mData(get_element_space_size())
+    HostTensor(std::initializer_list<X> lens) : mDesc(lens), mData(mDesc.get_element_space_size())
     {
     }
 
     template <typename X, typename Y>
     HostTensor(std::initializer_list<X> lens, std::initializer_list<Y> strides)
-        : mDesc(lens, strides), mData(get_element_space_size())
+        : mDesc(lens, strides), mData(mDesc.get_element_space_size())
     {
     }
 
     template <typename Lengths>
-    HostTensor(const Lengths& lens) : mDesc(lens), mData(get_element_space_size())
+    HostTensor(const Lengths& lens) : mDesc(lens), mData(mDesc.get_element_space_size())
     {
     }
 
@@ -302,7 +302,7 @@ struct HostTensor
     {
     }
 
-    HostTensor(const Descriptor& desc) : mDesc(desc), mData(get_element_space_size()) {}
+    HostTensor(const Descriptor& desc) : mDesc(desc), mData(mDesc.get_element_space_size()) {}
 
     template <typename OutT>
     HostTensor<OutT> CopyAsType() const
@@ -340,11 +340,7 @@ struct HostTensor
 
     std::size_t get_element_size() const { return mDesc.get_element_size(); }
 
-    std::size_t get_element_space_size() const
-    {
-        constexpr index_t PackedSize = ck_tile::numeric_traits<remove_cvref_t<T>>::PackedSize;
-        return mDesc.get_element_space_size() / PackedSize;
-    }
+    std::size_t get_element_space_size() const { return mDesc.get_element_space_size(); }
 
     std::size_t get_element_space_size_in_bytes() const
     {
@@ -467,27 +463,29 @@ struct HostTensor
     template <typename... Is>
     std::size_t GetOffsetFromMultiIndex(Is... is) const
     {
-        constexpr index_t PackedSize = ck_tile::numeric_traits<remove_cvref_t<T>>::PackedSize;
-        return mDesc.GetOffsetFromMultiIndex(is...) / PackedSize;
+        return mDesc.GetOffsetFromMultiIndex(is...);
     }
 
     template <typename... Is>
     T& operator()(Is... is)
     {
-        return mData[GetOffsetFromMultiIndex(is...)];
+        return mData[mDesc.GetOffsetFromMultiIndex(is...)];
     }
 
     template <typename... Is>
     const T& operator()(Is... is) const
     {
-        return mData[GetOffsetFromMultiIndex(is...)];
+        return mData[mDesc.GetOffsetFromMultiIndex(is...)];
     }
 
-    T& operator()(std::vector<std::size_t> idx) { return mData[GetOffsetFromMultiIndex(idx)]; }
+    T& operator()(std::vector<std::size_t> idx)
+    {
+        return mData[mDesc.GetOffsetFromMultiIndex(idx)];
+    }
 
     const T& operator()(std::vector<std::size_t> idx) const
     {
-        return mData[GetOffsetFromMultiIndex(idx)];
+        return mData[mDesc.GetOffsetFromMultiIndex(idx)];
     }
 
     HostTensor<T> transpose(std::vector<size_t> axes = {}) const
@@ -680,43 +678,4 @@ struct HostTensor
     Descriptor mDesc;
     Data mData;
 };
-
-template <bool is_row_major>
-auto host_tensor_descriptor(std::size_t row,
-                            std::size_t col,
-                            std::size_t stride,
-                            bool_constant<is_row_major>)
-{
-    using namespace ck_tile::literals;
-
-    if constexpr(is_row_major)
-    {
-        return HostTensorDescriptor({row, col}, {stride, 1_uz});
-    }
-    else
-    {
-        return HostTensorDescriptor({row, col}, {1_uz, stride});
-    }
-}
-template <bool is_row_major>
-auto get_default_stride(std::size_t row,
-                        std::size_t col,
-                        std::size_t stride,
-                        bool_constant<is_row_major>)
-{
-    if(stride == 0)
-    {
-        if constexpr(is_row_major)
-        {
-            return col;
-        }
-        else
-        {
-            return row;
-        }
-    }
-    else
-        return stride;
-}
-
 } // namespace ck_tile
