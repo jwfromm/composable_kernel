@@ -44,8 +44,6 @@ struct SimpleDeviceMem
 
 int main()
 {
-    bool time_kernel = true;
-
     ck::index_t M      = 48 * 256;
     ck::index_t N      = 1024;
     ck::index_t Stride = N;

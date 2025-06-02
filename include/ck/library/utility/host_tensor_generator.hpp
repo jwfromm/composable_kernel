@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2018-2024, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2018-2025, Advanced Micro Devices, Inc. All rights reserved.
 
 #pragma once
 
@@ -70,6 +70,30 @@ struct GeneratorTensor_1<ck::f8_t>
 #endif
 
 template <>
+struct GeneratorTensor_1<ck::f4_t>
+{
+    float value = 1.0;
+
+    template <typename... Is>
+    ck::f4_t operator()(Is...)
+    {
+        return ck::type_convert<ck::f4_t>(value);
+    }
+};
+
+template <>
+struct GeneratorTensor_1<ck::f4x2_pk_t>
+{
+    float value = 1.0;
+
+    template <typename... Is>
+    ck::f4x2_pk_t operator()(Is...)
+    {
+        return ck::f4x2_pk_t{ck::type_convert<ck::f4x2_t>(ck::float2_t{value, value})};
+    }
+};
+
+template <>
 struct GeneratorTensor_1<int8_t>
 {
     int8_t value = 1;
@@ -78,6 +102,20 @@ struct GeneratorTensor_1<int8_t>
     int8_t operator()(Is...)
     {
         return value;
+    }
+};
+
+template <>
+struct GeneratorTensor_1<ck::pk_i4_t>
+{
+    int8_t value = 1;
+
+    template <typename... Is>
+    ck::pk_i4_t operator()(Is...)
+    {
+        int t         = value + 8;
+        ck::pk_i4_t r = ((t << 4) + t) & 0xff;
+        return r;
     }
 };
 
@@ -121,6 +159,22 @@ struct GeneratorTensor_2<int8_t>
     }
 };
 
+template <>
+struct GeneratorTensor_2<ck::pk_i4_t>
+{
+    int min_value = 0;
+    int max_value = 1;
+
+    template <typename... Is>
+    ck::pk_i4_t operator()(Is...)
+    {
+        int hi        = std::rand() % (max_value - min_value) + min_value + 8;
+        int lo        = std::rand() % (max_value - min_value) + min_value + 8;
+        ck::pk_i4_t r = ((hi << 4) + lo) & 0xff;
+        return r;
+    }
+};
+
 #if defined CK_ENABLE_FP8
 template <>
 struct GeneratorTensor_2<ck::f8_t>
@@ -152,6 +206,35 @@ struct GeneratorTensor_2<ck::bf8_t>
     }
 };
 #endif
+
+template <>
+struct GeneratorTensor_2<ck::f4_t>
+{
+    int min_value = 0;
+    int max_value = 1;
+
+    template <typename... Is>
+    ck::f4_t operator()(Is...)
+    {
+        float tmp = (std::rand() % (max_value - min_value)) + min_value;
+        return ck::type_convert<ck::f4_t>(tmp);
+    }
+};
+
+template <>
+struct GeneratorTensor_2<ck::f4x2_pk_t>
+{
+    int min_value = 0;
+    int max_value = 1;
+
+    template <typename... Is>
+    ck::f4x2_pk_t operator()(Is...)
+    {
+        float tmp0 = (std::rand() % (max_value - min_value)) + min_value;
+        float tmp1 = (std::rand() % (max_value - min_value)) + min_value;
+        return ck::f4x2_pk_t{ck::type_convert<ck::f4x2_t>(ck::float2_t{tmp0, tmp1})};
+    }
+};
 
 template <typename T>
 struct GeneratorTensor_3
@@ -222,6 +305,42 @@ struct GeneratorTensor_3<ck::bf8_t>
     }
 };
 #endif
+
+template <>
+struct GeneratorTensor_3<ck::f4_t>
+{
+    float min_value = 0;
+    float max_value = 1;
+
+    template <typename... Is>
+    ck::f4_t operator()(Is...)
+    {
+        float tmp = float(std::rand()) / float(RAND_MAX);
+
+        float fp32_tmp = min_value + tmp * (max_value - min_value);
+
+        return ck::type_convert<ck::f4_t>(fp32_tmp);
+    }
+};
+
+template <>
+struct GeneratorTensor_3<ck::f4x2_pk_t>
+{
+    float min_value = 0;
+    float max_value = 1;
+
+    template <typename... Is>
+    ck::f4x2_pk_t operator()(Is...)
+    {
+        float tmp0 = float(std::rand()) / float(RAND_MAX);
+        float tmp1 = float(std::rand()) / float(RAND_MAX);
+
+        float fp32_tmp0 = min_value + tmp0 * (max_value - min_value);
+        float fp32_tmp1 = min_value + tmp1 * (max_value - min_value);
+
+        return ck::f4x2_pk_t{ck::type_convert<ck::f4x2_t>(ck::float2_t{fp32_tmp0, fp32_tmp1})};
+    }
+};
 
 template <typename T>
 struct GeneratorTensor_4

@@ -7,6 +7,7 @@
 #include <iostream>
 #include <initializer_list>
 #include <numeric>
+#include <unordered_map>
 
 #include "ck/ck.hpp"
 #include "ck/tensor_operation/gpu/device/gemm_specialization.hpp"
@@ -286,4 +287,108 @@ bool parse_cmd_args<ProblemSizeSplitK>(int argc,
     }
 
     return true;
+}
+
+template <typename DataType>
+inline __host__ __device__ constexpr double get_rtol()
+{
+    if constexpr(std::is_same_v<DataType, float>)
+    {
+        return 1e-3;
+    }
+    else if constexpr(std::is_same_v<DataType, double>)
+    {
+        return 1e-6;
+    }
+    else if constexpr(std::is_same_v<DataType, ck::half_t>)
+    {
+        return 1e-3;
+    }
+    else if constexpr(std::is_same_v<DataType, ck::bhalf_t>)
+    {
+        return 5e-2;
+    }
+    else if constexpr(std::is_same_v<DataType, int32_t>)
+    {
+        return 1e-1;
+    }
+    else if constexpr(std::is_same_v<DataType, int8_t>)
+    {
+        return 1e-1;
+    }
+    else if constexpr(std::is_same_v<DataType, ck::f8_t>)
+    {
+        return 1e-1; // 240 and 224 are acceptable
+    }
+    else if constexpr(std::is_same_v<DataType, ck::bf8_t>)
+    {
+        return 1.5e-1; // 57344 and 49152 are acceptable
+    }
+    else
+    {
+        return 1e-3;
+    }
+}
+
+template <typename DataType>
+inline __host__ __device__ constexpr double get_atol()
+{
+    if constexpr(std::is_same_v<DataType, float>)
+    {
+        return 1e-3;
+    }
+    else if constexpr(std::is_same_v<DataType, double>)
+    {
+        return 1e-6;
+    }
+    else if constexpr(std::is_same_v<DataType, ck::half_t>)
+    {
+        return 1e-3;
+    }
+    else if constexpr(std::is_same_v<DataType, ck::bhalf_t>)
+    {
+        return 5e-2;
+    }
+    else if constexpr(std::is_same_v<DataType, int32_t>)
+    {
+        return 1e-1;
+    }
+    else if constexpr(std::is_same_v<DataType, int8_t>)
+    {
+        return 1e-1;
+    }
+    else if constexpr(std::is_same_v<DataType, ck::f8_t>)
+    {
+        return 16.1; // 240 and 224 are acceptable
+    }
+    else if constexpr(std::is_same_v<DataType, ck::bf8_t>)
+    {
+        return 8192.1; // 57344 and 49152 are acceptable
+    }
+    else
+    {
+        return 1e-3;
+    }
+}
+
+float i4_to_f32_gfx9(uint8_t i4)
+{
+    static std::unordered_map<uint8_t, float> u = {{0b1000, -0.5000f},
+                                                   {0b1001, -0.4375f},
+                                                   {0b1010, -0.3750f},
+                                                   {0b1011, -0.3125f},
+                                                   {0b1100, -0.2500f},
+                                                   {0b1101, -0.1875f},
+                                                   {0b1110, -0.1250f},
+                                                   {0b1111, -0.0625f},
+                                                   {0b0, +0.0000f},
+                                                   {0b1, +0.0625f},
+                                                   {0b10, +0.1250f},
+                                                   {0b11, +0.1875f},
+                                                   {0b100, +0.2500f},
+                                                   {0b101, +0.3125f},
+                                                   {0b110, +0.3750f},
+                                                   {0b111, +0.4375f}};
+
+    return u[i4];
 }

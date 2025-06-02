@@ -7,6 +7,38 @@ include(gtest)
 
 add_custom_target(tests)
 
+# list of tests that are labelled as REGRESSION_TEST for make regression (runtime more than 30 seconds)
+# all other tests are labelled as SMOKE_TEST
+set(REGRESSION_TESTS
+    test_gemm_standalone_xdl_fp16
+    test_gemm_fp16
+    test_gemm_splitk
+    test_batched_gemm
+    test_gemm_universal
+    test_gemm_universal_streamk_fp16
+    test_gemm_universal_streamk_bf16
+    test_gemm_universal_streamk_fp8
+    test_batched_gemm_softmax_gemm_fp16
+    test_batched_gemm_softmax_gemm_permute_fp16
+    test_batched_gemm_bias_softmax_gemm_permute_fp16
+    test_batched_gemm_softmax_gemm_permute_bf16
+    test_batched_gemm_bias_softmax_gemm_permute_bf16
+    test_grouped_gemm_splitk
+    test_reduce_no_index
+    test_reduce_with_index
+    test_convnd_fwd
+    test_convnd_bwd_data
+    test_grouped_convnd_fwd
+    test_grouped_convnd_bwd_weight
+    test_softmax_rank3
+    test_softmax_rank4
+    test_batchnorm_fwd_rank_4
+    test_batchnorm_bwd_rank_4
+    test_grouped_convnd_bwd_data_xdl
+    test_conv_tensor_rearrange
+    test_gemm_mx
+)
+
 function(add_test_executable TEST_NAME)
     message("adding test ${TEST_NAME}")
     set(result 1)
@@ -44,6 +76,12 @@ function(add_test_executable TEST_NAME)
     set(TEST_TARGETS ${SUPPORTED_GPU_TARGETS})
 
     foreach(source IN LISTS ARGN)
+        if(NOT DEFINED DPP_KERNELS AND source MATCHES "_dpp")
+            message("removing dpp test ${source} ")
+            list(REMOVE_ITEM ARGN "${source}")
+        endif()
+    endforeach()
+    foreach(source IN LISTS ARGN)
         if(NOT DEFINED DL_KERNELS AND source MATCHES "_dl")
             message("removing dl test ${source} ")
             list(REMOVE_ITEM ARGN "${source}")
@@ -64,11 +102,11 @@ function(add_test_executable TEST_NAME)
     #only continue if there are some source files left on the list
     if(ARGN)
         if(ARGN MATCHES "_xdl")
-             list(REMOVE_ITEM TEST_TARGETS gfx900 gfx906 gfx906:xnack- gfx1030 gfx1100 gfx1101 gfx1102 gfx1103 gfx1200 gfx1201 gfx10.3-generic gfx11-generic gfx12-generic)
+             list(REMOVE_ITEM TEST_TARGETS gfx900 gfx906 gfx906:xnack- gfx1030 gfx1100 gfx1101 gfx1102 gfx1103 gfx1150 gfx1151 gfx1152 gfx1200 gfx1201 gfx10.3-generic gfx11-generic gfx12-generic)
         elseif(ARGN MATCHES "_wmma")
-             list(REMOVE_ITEM TEST_TARGETS gfx900 gfx906 gfx906:xnack- gfx908:xnack+ gfx908:xnack- gfx90a:xnack+ gfx90a:xnack- gfx908 gfx90a gfx940 gfx941 gfx942 gfx1030)
+             list(REMOVE_ITEM TEST_TARGETS gfx900 gfx906 gfx906:xnack- gfx908:xnack+ gfx908:xnack- gfx90a:xnack+ gfx90a:xnack- gfx908 gfx90a gfx942 gfx1030 gfx950)
         elseif(ARGN MATCHES "_smfmac")
-             list(REMOVE_ITEM TEST_TARGETS gfx900 gfx906 gfx906:xnack- gfx1030 gfx1100 gfx1101 gfx1102 gfx1103 gfx908 gfx90a gfx1200 gfx1201 gfx10.3-generic gfx11-generic gfx12-generic)
+             list(REMOVE_ITEM TEST_TARGETS gfx900 gfx906 gfx906:xnack- gfx1030 gfx1100 gfx1101 gfx1102 gfx1103 gfx1150 gfx1151 gfx1152 gfx908 gfx90a gfx1200 gfx1201 gfx10.3-generic gfx11-generic gfx12-generic)
         endif()
         set_source_files_properties(${ARGN} PROPERTIES LANGUAGE HIP)
         add_executable(${TEST_NAME} ${ARGN})
@@ -82,6 +120,15 @@ function(add_test_executable TEST_NAME)
     endif()
     #message("add_test returns ${result}")
     set(result ${result} PARENT_SCOPE)
+    if(result EQUAL 0 AND NOT "${TEST_NAME}" IN_LIST REGRESSION_TESTS)
+        message("adding to SMOKE TEST FILTER ${TEST_NAME}")
+        set_tests_properties(${TEST_NAME} PROPERTIES LABELS "SMOKE_TEST")
+        add_dependencies(smoke ${TEST_NAME})
+    elseif(result EQUAL 0 AND "${TEST_NAME}" IN_LIST REGRESSION_TESTS)
+        message("Adding to REGRESSION TEST FILTER ${TEST_NAME}")
+        set_tests_properties(${TEST_NAME} PROPERTIES LABELS "REGRESSION_TEST")
+        add_dependencies(regression ${TEST_NAME})
+    endif()
 endfunction()
 
 function(add_gtest_executable TEST_NAME)
@@ -126,26 +173,38 @@ function(add_gtest_executable TEST_NAME)
             list(REMOVE_ITEM ARGN "${source}")
         endif()
     endforeach()
+
     foreach(source IN LISTS ARGN)
         if(NOT TEST_TARGETS MATCHES "gfx9" AND source MATCHES "xdl")
             message("removing xdl test ${source} ")
             list(REMOVE_ITEM ARGN "${source}")
         endif()
     endforeach()
+
+    foreach(source IN LISTS ARGN)
+    if(NOT TEST_TARGETS MATCHES "gfx95" AND source MATCHES "mx_")
+        message("removing microscaling test ${source} ")
+        list(REMOVE_ITEM ARGN "${source}")
+    endif()
+    endforeach()
+
     foreach(source IN LISTS ARGN)
 	if(NOT TEST_TARGETS MATCHES "gfx11" AND NOT TEST_TARGETS MATCHES "gfx12" AND source MATCHES "wmma")
             message("removing wmma test ${source} ")
             list(REMOVE_ITEM ARGN "${source}")
         endif()
     endforeach()
+
     #only continue if there are some source files left on the list
     if(ARGN)
         if(ARGN MATCHES "_xdl")
-             list(REMOVE_ITEM TEST_TARGETS gfx900 gfx906 gfx906:xnack- gfx1030 gfx1100 gfx1101 gfx1102 gfx1103 gfx1200 gfx1201 gfx10.3-generic gfx11-generic gfx12-generic)
+             list(REMOVE_ITEM TEST_TARGETS gfx900 gfx906 gfx906:xnack- gfx1030 gfx1100 gfx1101 gfx1102 gfx1103 gfx1150 gfx1151 gfx1152 gfx1200 gfx1201 gfx10.3-generic gfx11-generic gfx12-generic)
         elseif(ARGN MATCHES "_wmma")
-             list(REMOVE_ITEM TEST_TARGETS gfx900 gfx906 gfx906:xnack- gfx908:xnack+ gfx908:xnack- gfx90a:xnack+ gfx90a:xnack- gfx908 gfx90a gfx940 gfx941 gfx942 gfx1030)
+             list(REMOVE_ITEM TEST_TARGETS gfx900 gfx906 gfx906:xnack- gfx908:xnack+ gfx908:xnack- gfx90a:xnack+ gfx90a:xnack- gfx908 gfx90a gfx942 gfx1030 gfx950)
         elseif(ARGN MATCHES "_smfmac")
-             list(REMOVE_ITEM TEST_TARGETS gfx900 gfx906 gfx906:xnack- gfx1030 gfx1100 gfx1101 gfx1102 gfx1103 gfx908 gfx90a gfx1200 gfx1201 gfx10.3-generic gfx11-generic gfx12-generic)
+             list(REMOVE_ITEM TEST_TARGETS gfx900 gfx906 gfx906:xnack- gfx1030 gfx1100 gfx1101 gfx1102 gfx1103 gfx1150 gfx1151 gfx1152 gfx908 gfx90a gfx1200 gfx1201 gfx10.3-generic gfx11-generic gfx12-generic)
+        elseif(ARGN MATCHES "_mx") #only build mx example for gfx950
+             list(REMOVE_ITEM TEST_TARGETS gfx900 gfx906 gfx906:xnack- gfx908:xnack+ gfx908:xnack- gfx90a:xnack+ gfx90a:xnack- gfx908 gfx90a gfx942 gfx1030 gfx1100 gfx1101 gfx1102 gfx1103 gfx1150 gfx1151 gfx1152 gfx1200 gfx1201 gfx10.3-generic gfx11-generic gfx12-generic)
         endif()
         set_source_files_properties(${ARGN} PROPERTIES LANGUAGE HIP)
         add_executable(${TEST_NAME} ${ARGN})
@@ -162,6 +221,15 @@ function(add_gtest_executable TEST_NAME)
     endif()
     #message("add_gtest returns ${result}")
     set(result ${result} PARENT_SCOPE)
+    if(result EQUAL 0 AND NOT "${TEST_NAME}" IN_LIST REGRESSION_TESTS)
+        #message("adding to smoke test FILTER ${TEST_NAME}")
+        set_tests_properties(${TEST_NAME} PROPERTIES LABELS "SMOKE_TEST")
+        add_dependencies(smoke ${TEST_NAME})
+    elseif(result EQUAL 0 AND "${TEST_NAME}" IN_LIST REGRESSION_TESTS)
+        #message("Adding to REGRESSION TEST FILTER ${TEST_NAME}")
+        set_tests_properties(${TEST_NAME} PROPERTIES LABELS "REGRESSION_TEST")
+        add_dependencies(regression ${TEST_NAME})
+    endif()
 endfunction()
 
 add_compile_options(-Wno-c++20-extensions)
@@ -175,6 +243,7 @@ add_subdirectory(gemm_add)
 add_subdirectory(gemm_layernorm)
 add_subdirectory(gemm_split_k)
 add_subdirectory(gemm_universal)
+add_subdirectory(gemm_universal_streamk)
 add_subdirectory(gemm_reduce)
 add_subdirectory(batched_gemm)
 add_subdirectory(batched_gemm_reduce)
@@ -186,6 +255,7 @@ add_subdirectory(reduce)
 add_subdirectory(convnd_fwd)
 add_subdirectory(convnd_bwd_data)
 add_subdirectory(grouped_convnd_fwd)
+add_subdirectory(grouped_convnd_fwd_bias_relu)
 add_subdirectory(grouped_convnd_bwd_weight)
 add_subdirectory(block_to_ctile_map)
 add_subdirectory(softmax)
@@ -206,8 +276,12 @@ add_subdirectory(wrapper)
 if(SUPPORTED_GPU_TARGETS MATCHES "gfx11")
     add_subdirectory(wmma_op)
 endif()
-if(SUPPORTED_GPU_TARGETS MATCHES "gfx942" AND CK_HIP_VERSION_MAJOR GREATER_EQUAL 6 AND CK_HIP_VERSION_MINOR GREATER_EQUAL 2) # smfmac needs ROCm6.2
+if(SUPPORTED_GPU_TARGETS MATCHES "gfx942" OR SUPPORTED_GPU_TARGETS MATCHES "gfx950") # smfmac needs ROCm6.2
     add_subdirectory(smfmac_op)
+endif()
+if(SUPPORTED_GPU_TARGETS MATCHES "gfx950") 
+    add_subdirectory(mx_mfma_op)
+    add_subdirectory(gemm_mx)
 endif()
 add_subdirectory(position_embedding)
 add_subdirectory(scatter_gather)

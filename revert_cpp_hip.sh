@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Source directory containing *.cpp files
-source_directory="$HOME/composable_kernel"
+source_directory="$PWD"
 
 # Check if the source directory exists
 if [ ! -d "$source_directory" ]; then

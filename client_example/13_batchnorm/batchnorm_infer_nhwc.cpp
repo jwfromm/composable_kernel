@@ -46,7 +46,6 @@ int main(int argc, char* argv[])
     std::array<ck::index_t, Rank> xyStrides{8 * 128 * 256, 128 * 256, 256, 1};
     std::array<ck::index_t, Rank - NumBatchNormReduceDim> scaleBiasMeanVarLengths{256};
     std::array<ck::index_t, Rank - NumBatchNormReduceDim> scaleBiasMeanVarStrides{1};
-    std::array<int, NumBatchNormReduceDim> reduceDims{0, 1, 2};
     std::array<int, Rank - NumBatchNormReduceDim> invariantDims{3};
 
     ck::index_t numXYElement =
