@@ -28,6 +28,13 @@ __device__ unsigned short atomic_add<unsigned short>(unsigned short* p_dst, cons
 }
 
 template <>
+__device__ _Float16 atomic_add<_Float16>(_Float16* p_dst, const _Float16& x)
+{
+    // Use atomicAdd with unsigned int
+    return static_cast<_Float16>(atomicAdd(reinterpret_cast<unsigned int*>(p_dst), static_cast<unsigned int>(x)));
+}
+
+template <>
 __device__ uint32_t atomic_add<uint32_t>(uint32_t* p_dst, const uint32_t& x)
 {
     return atomicAdd(p_dst, x);
